@@ -1,0 +1,5 @@
+{
+  "name": "Sistema de Entrenamiento Atlético",
+  "description": "Una plataforma completa para que los atletas registren, analicen y visualicen sus entrenamientos. Incluye registro detallado de series y bloques aeróbicos, análisis automático de rendimiento y exportación de informes en PDF.",
+  "requestFramePermissions": []
+}
