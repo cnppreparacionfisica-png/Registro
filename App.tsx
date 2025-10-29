@@ -729,15 +729,21 @@ const App: React.FC = () => {
         }
     }, []);
 
-    const handleDeleteTraining = (id: string) => {
-        if(window.confirm('¿Estás seguro de que quieres eliminar este entrenamiento?')) {
+    const handleDeleteTraining = useCallback((id: string) => {
+        if (window.confirm('¿Estás seguro de que quieres eliminar este entrenamiento?')) {
+            const isLatest = latestTraining?.id === id;
+            const isModal = modalTrainingId === id;
+
             setHistory(prevHistory => prevHistory.filter(t => t.id !== id));
-            if(modalTrainingId === id) setModalTrainingId(null);
-            if(latestTraining?.id === id) {
+
+            if (isModal) {
+                setModalTrainingId(null);
+            }
+            if (isLatest) {
                 setActiveTab('history');
             }
         }
-    };
+    }, [latestTraining, modalTrainingId, setHistory]);
     
     const handleClearHistory = () => {
         if(window.confirm('¿Estás seguro de que quieres borrar TODO el historial? Esta acción no se puede deshacer.')) {
