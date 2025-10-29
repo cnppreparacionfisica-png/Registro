@@ -1,18 +1,9 @@
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import type { Training, TrainingType, Serie, FartlekBlock, PotenciaBlock, DayOfWeek, FartlekSeriesData, PotenciaSeriesData } from './types';
 import { Chart, registerables } from 'chart.js';
 import type { Chart as ChartType } from 'chart.js';
 
 Chart.register(...registerables);
-
-declare global {
-    interface Window {
-        jspdf: any;
-        html2canvas: any;
-    }
-}
-
 
 // --- UTILITY FUNCTIONS ---
 const formatTime = (totalSeconds: number): string => {
@@ -52,7 +43,109 @@ const calculateTotalDuration = (training: Training): number => {
         default:
             return 0;
     }
-}
+};
+
+const generateReportHtml = (training: Training, paceChartImg: string | null, timeChartImg: string | null): string => {
+    const renderSeriesTable = (series: Serie[]) => {
+        const rows = series.map((s, i) => {
+            const pacePer100 = s.distance > 0 ? (s.time / s.distance) * 100 : 0;
+            const est800 = pacePer100 * 8;
+            return `<tr>
+                <td>${i + 1}</td>
+                <td>${s.distance}m</td>
+                <td>${formatTime(s.time)}</td>
+                <td>${formatTime(s.recovery)}</td>
+                <td>${pacePer100.toFixed(2)}s</td>
+                <td>${formatTime(est800)}</td>
+                <td>${s.sensations || '-'}</td>
+            </tr>`;
+        }).join('');
+        return `<h3>Detalle de Series</h3>
+            <table>
+                <thead><tr><th>#</th><th>Distancia</th><th>Tiempo</th><th>Rec.</th><th>Ritmo/100m</th><th>Est. 800m</th><th>Sensaciones</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>`;
+    };
+
+    const renderAerobicTable = (blocks: (FartlekBlock | PotenciaBlock)[], title: string) => {
+        const rows = blocks.map((b, i) => {
+            const pacePerKm = b.distance > 0 ? formatTime((b.time * 60) / (b.distance / 1000)) : 'N/A';
+            return `<tr>
+                <td>${i + 1}</td>
+                <td>${b.time} min</td>
+                <td>${b.distance}m</td>
+                <td>${pacePerKm}</td>
+                <td>${b.sensations || '-'}</td>
+            </tr>`;
+        }).join('');
+        return `<h3>${title}</h3>
+            <table>
+                <thead><tr><th>#</th><th>Tiempo</th><th>Distancia</th><th>Ritmo (min/km)</th><th>Sensaciones</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>`;
+    };
+
+    let tablesHtml = '';
+    switch (training.type) {
+        case 'Series':
+            tablesHtml = renderSeriesTable(training.data as Serie[]);
+            break;
+        case 'Fartlek':
+            tablesHtml = renderAerobicTable(training.data as FartlekBlock[], 'Detalle de Fartlek');
+            break;
+        case 'Potencia Aeróbica':
+            tablesHtml = renderAerobicTable(training.data as PotenciaBlock[], 'Detalle Potencia Aeróbica');
+            break;
+        case 'Fartlek más Series':
+            const fsData = training.data as FartlekSeriesData;
+            tablesHtml = renderAerobicTable(fsData.fartlekBlocks, 'Detalle de Fartlek') + renderSeriesTable(fsData.series);
+            break;
+        case 'Potencia Aeróbica más Series':
+            const psData = training.data as PotenciaSeriesData;
+            tablesHtml = renderAerobicTable(psData.potenciaBlocks, 'Detalle Potencia Aeróbica') + renderSeriesTable(psData.series);
+            break;
+    }
+
+    let chartsHtml = '';
+    if (paceChartImg) {
+        chartsHtml += `<div class="chart-container"><h3>Gráfico de Ritmo por 100m</h3><img src="${paceChartImg}" alt="Gráfico de Ritmo"></div>`;
+    }
+    if (timeChartImg) {
+        chartsHtml += `<div class="chart-container"><h3>Gráfico de Evolución de Tiempo</h3><img src="${timeChartImg}" alt="Gráfico de Tiempo"></div>`;
+    }
+
+    return `
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+            <meta charset="UTF-8">
+            <title>Informe de Entrenamiento - ${training.athleteName}</title>
+            <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 2rem; color: #333; }
+                .header, .chart-container { page-break-inside: avoid; }
+                h1, h2, h3 { color: #111; }
+                h1 { font-size: 2em; } h2 { font-size: 1.5em; border-bottom: 2px solid #0EA5E9; padding-bottom: 0.3em; margin-top: 2em; }
+                table { width: 100%; border-collapse: collapse; margin-top: 1em; margin-bottom: 2em; page-break-inside: avoid; }
+                th, td { border: 1px solid #ddd; padding: 0.75rem; text-align: left; }
+                th { background-color: #f7fafc; font-weight: 600; }
+                tr:nth-child(even) { background-color: #fdfdff; }
+                .chart-container { margin-top: 2rem; }
+                .chart-container img { max-width: 100%; height: auto; border: 1px solid #eee; border-radius: 4px; }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>Informe de Entrenamiento</h1>
+                <h2>${training.athleteName}</h2>
+                <p><strong>${training.day} - ${training.type}</strong></p>
+                <p><small>${formatDate(training.date)}</small></p>
+            </div>
+            ${tablesHtml}
+            ${chartsHtml}
+        </body>
+        </html>`;
+};
+
 
 // --- ICONS ---
 const Icon = ({ path, className }: { path: string, className?: string }) => (
@@ -60,7 +153,7 @@ const Icon = ({ path, className }: { path: string, className?: string }) => (
         <path fillRule="evenodd" d={path} clipRule="evenodd" />
     </svg>
 );
-const ChartBarIcon = () => <Icon path="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25C3.504 21 3 20.496 3 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />;
+const ChartBarIcon = () => <Icon path="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25C3.504 21 3 20.496 3 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125-1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />;
 const RunnerIcon = () => <Icon path="M12.375 3.375a1.5 1.5 0 011.5 1.5v2.25h1.5a1.5 1.5 0 011.5 1.5v1.5a1.5 1.5 0 01-1.5 1.5h-1.5v2.25a1.5 1.5 0 01-1.5 1.5h-1.5a1.5 1.5 0 01-1.5-1.5v-1.5a1.5 1.5 0 011.5-1.5h1.5v-1.5h-1.5a1.5 1.5 0 01-1.5-1.5v-2.25a1.5 1.5 0 011.5-1.5h1.5z" />;
 const MuscleIcon = () => <Icon path="M10.5 6A2.25 2.25 0 008.25 8.25V14.25a2.25 2.25 0 002.25 2.25h3a2.25 2.25 0 002.25-2.25V8.25a2.25 2.25 0 00-2.25-2.25h-3z" />;
 const UsersIcon = () => <Icon path="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-1.063 3 3 0 10-5.513-5.513 3 3 0 00-1.232 2.625 3 3 0 003 3zM9 11.25a3 3 0 100-6 3 3 0 000 6z" />;
@@ -93,7 +186,7 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, React.Dispatch<R
 
 // --- CHILD COMPONENTS ---
 
-const ResultsDisplay = ({ training, onExportPdf, onDelete }: { training: Training | null, onExportPdf: () => void, onDelete: (id: string) => void }) => {
+const ResultsDisplay = ({ training, onExportCsv, onDelete }: { training: Training | null, onExportCsv: (training: Training) => void, onDelete: (id: string) => void }) => {
     const paceChartRef = React.useRef<HTMLCanvasElement>(null);
     const timeChartRef = React.useRef<HTMLCanvasElement>(null);
     const chartInstances = React.useRef<{ pace?: ChartType, time?: ChartType }>({});
@@ -127,7 +220,7 @@ const ResultsDisplay = ({ training, onExportPdf, onDelete }: { training: Trainin
                         borderWidth: 1
                     }]
                 },
-                options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+                options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, animation: { duration: 0 } }
             });
 
             chartInstances.current.time = new Chart(timeChartRef.current, {
@@ -142,7 +235,7 @@ const ResultsDisplay = ({ training, onExportPdf, onDelete }: { training: Trainin
                         tension: 0.1
                     }]
                 },
-                 options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+                 options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, animation: { duration: 0 } }
             });
         }
 
@@ -151,6 +244,33 @@ const ResultsDisplay = ({ training, onExportPdf, onDelete }: { training: Trainin
             if (chartInstances.current.time) chartInstances.current.time.destroy();
         }
     }, [seriesData]);
+    
+    const handlePrint = useCallback(() => {
+        if (!training) return;
+        
+        if (seriesData.length > 0 && (!chartInstances.current.pace || !chartInstances.current.time)) {
+            alert("Los gráficos aún no están listos. Por favor, espera un momento y vuelve a intentarlo.");
+            return;
+        }
+
+        const paceChartImg = chartInstances.current.pace ? chartInstances.current.pace.toBase64Image() : null;
+        const timeChartImg = chartInstances.current.time ? chartInstances.current.time.toBase64Image() : null;
+    
+        const reportHtml = generateReportHtml(training, paceChartImg, timeChartImg);
+    
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+            printWindow.document.open();
+            printWindow.document.write(reportHtml);
+            printWindow.document.close();
+            setTimeout(() => {
+                printWindow.focus();
+                printWindow.print();
+            }, 500);
+        } else {
+            alert('Por favor, habilita las ventanas emergentes para poder imprimir el informe.');
+        }
+    }, [training, seriesData]);
 
     if (!training) {
         return <div className="text-center p-8 bg-white rounded-lg shadow-md">No hay datos de entrenamiento todavía. Registra uno nuevo para ver los resultados.</div>;
@@ -205,7 +325,7 @@ const ResultsDisplay = ({ training, onExportPdf, onDelete }: { training: Trainin
                 </thead>
                 <tbody>
                     {blocks.map((b, i) => {
-                        const pacePerKm = b.distance > 0 ? (b.time / (b.distance / 1000)).toFixed(2) : 'N/A';
+                        const pacePerKm = b.distance > 0 ? formatTime((b.time * 60) / (b.distance / 1000)) : 'N/A';
                         return (
                             <tr key={i} className="border-b">
                                 <td className="p-2 font-semibold">{i + 1}</td>
@@ -235,7 +355,7 @@ const ResultsDisplay = ({ training, onExportPdf, onDelete }: { training: Trainin
                 </thead>
                 <tbody>
                     {blocks.map((b, i) => {
-                         const pacePerKm = b.distance > 0 ? (b.time / (b.distance / 1000)).toFixed(2) : 'N/A';
+                         const pacePerKm = b.distance > 0 ? formatTime((b.time * 60) / (b.distance / 1000)) : 'N/A';
                          return (
                             <tr key={i} className="border-b">
                                 <td className="p-2 font-semibold">{i + 1}</td>
@@ -252,16 +372,17 @@ const ResultsDisplay = ({ training, onExportPdf, onDelete }: { training: Trainin
     );
 
     return (
-         <div id="pdf-content" className="space-y-6 fade-in bg-white p-4 sm:p-6 rounded-lg shadow-md">
+         <div className="space-y-6 fade-in bg-white p-4 sm:p-6 rounded-lg shadow-md">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
                 <div>
                      <h2 className="text-xl sm:text-2xl font-bold text-sky-600">{training.athleteName}</h2>
                      <p className="text-slate-500">{training.day} - {training.type}</p>
                      <p className="text-sm text-slate-400">{formatDate(training.date)}</p>
                 </div>
-                <div className="flex gap-2 mt-4 md:mt-0">
+                <div className="flex flex-wrap gap-2 mt-4 md:mt-0">
                     <button onClick={() => onDelete(training.id)} className="bg-red-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-600 min-h-[44px]">Borrar</button>
-                    <button onClick={onExportPdf} className="bg-green-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-600 min-h-[44px]">Exportar a PDF</button>
+                    <button onClick={handlePrint} className="bg-sky-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-sky-600 min-h-[44px]">Imprimir / Guardar PDF</button>
+                    <button onClick={() => onExportCsv(training)} className="bg-green-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-600 min-h-[44px]">Exportar CSV</button>
                 </div>
             </div>
             
@@ -292,8 +413,6 @@ const ResultsDisplay = ({ training, onExportPdf, onDelete }: { training: Trainin
     );
 };
 
-
-{/* FIX: Make children prop optional to fix "Property 'children' is missing" error. */}
 const Modal = ({ isOpen, onClose, children }: { isOpen: boolean, onClose: () => void, children?: React.ReactNode }) => {
     if (!isOpen) return null;
 
@@ -330,6 +449,7 @@ const App: React.FC = () => {
     const [history, setHistory] = useLocalStorage<Training[]>('athletic_training_history', []);
     const [activeTab, setActiveTab] = useState('new');
     const [modalTrainingId, setModalTrainingId] = useState<string | null>(null);
+
 
     // Form State
     const [athleteName, setAthleteName] = useState('');
@@ -475,7 +595,6 @@ const App: React.FC = () => {
                     alert('Debes añadir al menos una serie.');
                     return;
                 }
-                {/* FIX: Explicitly provide generic type to stripId to fix type inference issue. */}
                 trainingData = stripId<SerieWithId>(series);
                 break;
             case 'Fartlek':
@@ -483,7 +602,6 @@ const App: React.FC = () => {
                     alert('Debes añadir al menos un bloque de Fartlek.');
                     return;
                 }
-                {/* FIX: Explicitly provide generic type to stripId to fix type inference issue. */}
                 trainingData = stripId<FartlekBlockWithId>(fartlekBlocks);
                 break;
             case 'Potencia Aeróbica':
@@ -491,7 +609,6 @@ const App: React.FC = () => {
                     alert('Debes añadir al menos un bloque de Potencia Aeróbica.');
                     return;
                 }
-                {/* FIX: Explicitly provide generic type to stripId to fix type inference issue. */}
                 trainingData = stripId<PotenciaBlockWithId>(potenciaBlocks);
                 break;
             case 'Fartlek más Series':
@@ -499,7 +616,6 @@ const App: React.FC = () => {
                     alert('Debes añadir al menos un bloque de Fartlek Y una serie.');
                     return;
                 }
-                {/* FIX: Explicitly provide generic type to stripId to fix type inference issue. */}
                 trainingData = { fartlekBlocks: stripId<FartlekBlockWithId>(fartlekBlocks), series: stripId<SerieWithId>(series) };
                 break;
             case 'Potencia Aeróbica más Series':
@@ -507,7 +623,6 @@ const App: React.FC = () => {
                     alert('Debes añadir al menos un bloque de Potencia Aeróbica Y una serie.');
                     return;
                 }
-                {/* FIX: Explicitly provide generic type to stripId to fix type inference issue. */}
                 trainingData = { potenciaBlocks: stripId<PotenciaBlockWithId>(potenciaBlocks), series: stripId<SerieWithId>(series) };
                 break;
             default:
@@ -529,66 +644,90 @@ const App: React.FC = () => {
         resetForm();
         setActiveTab('results');
     };
-    
-    const handleExportPdf = useCallback((trainingToExport: Training | null) => {
-        const { jsPDF } = window.jspdf;
-        const contentId = trainingToExport?.id === latestTraining?.id ? 'pdf-content' : 'modal-pdf-content';
-        const input = document.getElementById(contentId) as HTMLElement | null;
-    
-        if (input && trainingToExport) {
-            const pdf = new jsPDF('p', 'mm', 'a4');
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-    
-            // --- PDF Generation Setup ---
-            const buttons = input.querySelectorAll('button');
-            const charts = input.querySelectorAll('.chart-wrapper');
-            const originalStyle = input.style.cssText;
-            const wasShadowed = input.classList.contains('shadow-md');
-    
-            // PREPARE FOR CAPTURE: Hide elements, remove shadow, force solid background
-            buttons.forEach(btn => btn.style.display = 'none');
-            charts.forEach(chart => (chart as HTMLElement).style.display = 'none');
-            if (wasShadowed) {
-                input.classList.remove('shadow-md');
-            }
-            input.style.backgroundColor = 'white';
-    
-            window.html2canvas(input, { 
-                scale: 2, 
-                backgroundColor: '#ffffff', // Re-iterate background
-                useCORS: true,
-             }).then(canvas => {
-                const imgData = canvas.toDataURL('image/png');
-                const imgProps = pdf.getImageProperties(imgData);
-                const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+    const handleExportCsv = useCallback((trainingToExport: Training | null) => {
+        if (!trainingToExport) return;
+
+        try {
+            const escapeCsvCell = (cell: string | number) => {
+                const cellStr = String(cell || '');
+                if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+                    return `"${cellStr.replace(/"/g, '""')}"`;
+                }
+                return cellStr;
+            };
+
+            let fullCsv = "";
+            
+            const createCsv = (headers: string[], data: any[][]) => {
+                const headerRow = headers.map(escapeCsvCell).join(',');
+                const bodyRows = data.map(row => row.map(escapeCsvCell).join(','));
+                return `${headerRow}\n${bodyRows.join('\n')}`;
+            };
+
+            const seriesHeaders = ['#', 'Distancia (m)', 'Tiempo', 'Recuperacion', 'Ritmo/100m (s)', 'Est. 800m', 'Sensaciones'];
+            const aerobicHeaders = ['#', 'Tiempo (min)', 'Distancia (m)', 'Ritmo (min/km)', 'Sensaciones'];
+            
+            fullCsv += `Atleta,${escapeCsvCell(trainingToExport.athleteName)}\nTipo,${escapeCsvCell(trainingToExport.type)}\nFecha,${escapeCsvCell(formatDate(trainingToExport.date))}\n\n`;
+
+            switch (trainingToExport.type) {
+                case 'Series':
+                    const seriesData = (trainingToExport.data as Serie[]).map((s, i) => {
+                        const pacePer100 = s.distance > 0 ? (s.time / s.distance) * 100 : 0;
+                        return [i + 1, s.distance, formatTime(s.time), formatTime(s.recovery), pacePer100.toFixed(2), formatTime(pacePer100 * 8), s.sensations];
+                    });
+                    fullCsv += createCsv(seriesHeaders, seriesData);
+                    break;
+
+                case 'Fartlek':
+                case 'Potencia Aeróbica':
+                    const aerobicData = (trainingToExport.data as (FartlekBlock | PotenciaBlock)[]).map((b, i) => {
+                        const pacePerKm = b.distance > 0 ? formatTime((b.time * 60) / (b.distance / 1000)) : 'N/A';
+                        return [i + 1, b.time, b.distance, pacePerKm, b.sensations];
+                    });
+                    fullCsv += createCsv(aerobicHeaders, aerobicData);
+                    break;
                 
-                let heightLeft = pdfHeight;
-                let position = 0;
-                const pageHeight = pdf.internal.pageSize.getHeight();
-    
-                pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
-                heightLeft -= pageHeight;
-            
-                while (heightLeft > 0) {
-                    position = heightLeft - pdfHeight;
-                    pdf.addPage();
-                    pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
-                    heightLeft -= pageHeight;
-                }
-    
-                pdf.save(`entrenamiento-${trainingToExport.athleteName.replace(/\s/g, '_')}-${new Date(trainingToExport.date).toLocaleDateString('sv')}.pdf`);
-            
-            }).finally(() => {
-                 // --- CLEANUP: Restore original appearance ---
-                input.style.cssText = originalStyle;
-                if (wasShadowed) {
-                    input.classList.add('shadow-md');
-                }
-                buttons.forEach(btn => btn.style.display = '');
-                charts.forEach(chart => (chart as HTMLElement).style.display = '');
-            });
+                case 'Fartlek más Series':
+                case 'Potencia Aeróbica más Series':
+                    const combinedData = trainingToExport.data as FartlekSeriesData | PotenciaSeriesData;
+                    const aerobicBlocks = 'fartlekBlocks' in combinedData ? combinedData.fartlekBlocks : combinedData.potenciaBlocks;
+
+                    const aerobicRows = aerobicBlocks.map((b, i) => {
+                        const pacePerKm = b.distance > 0 ? formatTime((b.time * 60) / (b.distance / 1000)) : 'N/A';
+                        return [i + 1, b.time, b.distance, pacePerKm, b.sensations];
+                    });
+                    fullCsv += `Detalle ${'fartlekBlocks' in combinedData ? 'Fartlek' : 'Potencia Aeróbica'}\n`;
+                    fullCsv += createCsv(aerobicHeaders, aerobicRows);
+                    fullCsv += '\n\n';
+                    
+                    fullCsv += 'Detalle Series\n';
+                    const seriesRows = combinedData.series.map((s, i) => {
+                        const pacePer100 = s.distance > 0 ? (s.time / s.distance) * 100 : 0;
+                        return [i + 1, s.distance, formatTime(s.time), formatTime(s.recovery), pacePer100.toFixed(2), formatTime(pacePer100 * 8), s.sensations];
+                    });
+                    fullCsv += createCsv(seriesHeaders, seriesRows);
+                    break;
+            }
+
+            const BOM = "\uFEFF";
+            const blob = new Blob([BOM + fullCsv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            const filename = `entrenamiento-${trainingToExport.athleteName.replace(/\s/g, '_')}-${new Date(trainingToExport.date).toLocaleDateString('sv')}.csv`;
+
+            link.setAttribute("href", url);
+            link.setAttribute("download", filename);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error("Error al exportar CSV:", error);
+            alert(`Ocurrió un error al exportar el CSV: ${error instanceof Error ? error.message : String(error)}`);
         }
-    }, [latestTraining]);
+    }, []);
 
     const handleDeleteTraining = (id: string) => {
         if(window.confirm('¿Estás seguro de que quieres eliminar este entrenamiento?')) {
@@ -713,118 +852,120 @@ const App: React.FC = () => {
     const showPotenciaForm = type === 'Potencia Aeróbica' || type === 'Potencia Aeróbica más Series';
 
     return (
-        <div className="container mx-auto p-4 md:p-8 space-y-8">
-            <header className="text-center p-8 md:p-12 bg-gradient-to-br from-sky-500 to-sky-700 text-white rounded-xl shadow-lg">
-                <h1 className="text-3xl md:text-5xl font-bold">Sistema de Entrenamiento Atlético</h1>
-                <p className="mt-2 text-lg md:text-xl text-sky-100">Plataforma profesional para registro y análisis de entrenamientos</p>
-                <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6 text-left">
-                    <div className="bg-white/20 p-4 rounded-lg backdrop-blur-sm">Registro detallado de series y bloques aeróbicos</div>
-                    <div className="bg-white/20 p-4 rounded-lg backdrop-blur-sm">Análisis automático de ritmos y rendimiento</div>
-                    <div className="bg-white/20 p-4 rounded-lg backdrop-blur-sm">Exportación de informes en PDF</div>
-                </div>
-            </header>
-
-            <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                <DashboardCard icon={<ChartBarIcon />} title="Total Entrenamientos" value={dashboardStats.totalTrainings} color="#0EA5E9" />
-                <DashboardCard icon={<RunnerIcon />} title="Total de Series" value={dashboardStats.totalSeries} color="#10B981" />
-                <DashboardCard icon={<MuscleIcon />} title="Entr. P. Aeróbica" value={dashboardStats.totalPotencia} color="#F59E0B" />
-                <DashboardCard icon={<UsersIcon />} title="Usuarios Activos" value={dashboardStats.activeUsers} color="#8B5CF6" />
-            </section>
-
-            <main>
-                <div className="border-b border-slate-200 flex flex-col sm:flex-row">
-                    <button onClick={() => setActiveTab('new')} className={`py-2 px-4 border-b-2 text-lg font-medium ${activeTab === 'new' ? 'tab-active' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}>Nuevo Entrenamiento</button>
-                    <button onClick={() => setActiveTab('results')} className={`py-2 px-4 border-b-2 text-lg font-medium ${activeTab === 'results' ? 'tab-active' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}>Resultados</button>
-                    <button onClick={() => setActiveTab('history')} className={`py-2 px-4 border-b-2 text-lg font-medium ${activeTab === 'history' ? 'tab-active' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}>Historial</button>
-                </div>
-
-                <div className="mt-6">
-                    {activeTab === 'new' && (
-                        <div className="bg-white p-6 rounded-lg shadow-md space-y-6 fade-in">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div>
-                                    <label htmlFor="athleteName" className="block text-sm font-medium text-slate-700">Nombre del Atleta</label>
-                                    <input type="text" id="athleteName" value={athleteName} onChange={(e) => setAthleteName(e.target.value)} className="mt-1 block w-full rounded-md border-sky-500 shadow-sm" />
-                                </div>
-                                <div>
-                                    <label htmlFor="day" className="block text-sm font-medium text-slate-700">Día de Entrenamiento</label>
-                                    <select id="day" value={day} onChange={(e) => setDay(e.target.value as DayOfWeek)} className="mt-1 block w-full rounded-md border-sky-500 shadow-sm">
-                                        {(['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'] as DayOfWeek[]).map(d => <option key={d} value={d}>{d}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label htmlFor="type" className="block text-sm font-medium text-slate-700">Tipo de Entrenamiento</label>
-                                    <select id="type" value={type} onChange={(e) => setType(e.target.value as TrainingType)} className="mt-1 block w-full rounded-md border-sky-500 shadow-sm">
-                                        {(['Series', 'Fartlek', 'Potencia Aeróbica', 'Fartlek más Series', 'Potencia Aeróbica más Series'] as TrainingType[]).map(t => <option key={t} value={t}>{t}</option>)}
-                                    </select>
-                                </div>
-                            </div>
-                            
-                            {showSeriesForm && renderSeriesForm()}
-                            {showFartlekForm && renderFartlekForm()}
-                            {showPotenciaForm && renderPotenciaForm()}
-
-                            <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t">
-                                <button onClick={handleRegister} className="bg-sky-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-sky-700 text-lg flex-grow min-h-[44px]">Registrar Entrenamiento</button>
-                                <button onClick={resetForm} className="bg-red-500 text-white font-bold py-3 px-6 rounded-lg hover:bg-red-600 min-h-[44px]">Reiniciar Formulario</button>
-                            </div>
-                        </div>
-                    )}
-
-                    {activeTab === 'results' && <ResultsDisplay training={latestTraining} onExportPdf={() => handleExportPdf(latestTraining)} onDelete={handleDeleteTraining} />}
-                    
-                    {activeTab === 'history' && (
-                        <div className="bg-white p-6 rounded-lg shadow-md fade-in">
-                            <div className="flex justify-between items-center mb-4">
-                                <h2 className="text-xl font-bold">Historial de Entrenamientos</h2>
-                                {history.length > 0 && <button onClick={handleClearHistory} className="bg-red-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-600">Limpiar Historial</button>}
-                            </div>
-                            {history.length === 0 ? <p>No hay entrenamientos en el historial.</p> :
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left">
-                                    <thead className="bg-slate-50">
-                                        <tr>
-                                            <th className="p-3">Fecha</th>
-                                            <th className="p-3">Atleta</th>
-                                            <th className="p-3">Tipo</th>
-                                            <th className="p-3">Duración</th>
-                                            <th className="p-3">Acciones</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {history.slice().reverse().map(t => (
-                                            <tr key={t.id} className="border-b hover:bg-slate-50">
-                                                <td className="p-3">{formatDate(t.date)}</td>
-                                                <td className="p-3">{t.athleteName}</td>
-                                                <td className="p-3">{t.type}</td>
-                                                <td className="p-3">{formatTime(calculateTotalDuration(t))}</td>
-                                                <td className="p-3 flex gap-2">
-                                                    <button onClick={() => setModalTrainingId(t.id)} className="text-sky-600 hover:text-sky-800"><EyeIcon /></button>
-                                                    <button onClick={() => handleDeleteTraining(t.id)} className="text-red-500 hover:text-red-700"><TrashIcon /></button>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                            }
-                        </div>
-                    )}
-                </div>
-            </main>
-
-            <Modal isOpen={!!modalTrainingId} onClose={() => setModalTrainingId(null)}>
-                {modalTraining ? (
-                    <div id="modal-pdf-content">
-                        <ResultsDisplay training={modalTraining} onExportPdf={() => handleExportPdf(modalTraining)} onDelete={handleDeleteTraining} />
+        <>
+            <div className="container mx-auto p-4 md:p-8 space-y-8">
+                <header className="text-center p-8 md:p-12 bg-gradient-to-br from-sky-500 to-sky-700 text-white rounded-xl shadow-lg">
+                    <h1 className="text-3xl md:text-5xl font-bold">Sistema de Entrenamiento Atlético</h1>
+                    <p className="mt-2 text-lg md:text-xl text-sky-100">Plataforma profesional para registro y análisis de entrenamientos</p>
+                    <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6 text-left">
+                        <div className="bg-white/20 p-4 rounded-lg backdrop-blur-sm">Registro detallado de series y bloques aeróbicos</div>
+                        <div className="bg-white/20 p-4 rounded-lg backdrop-blur-sm">Análisis automático de ritmos y rendimiento</div>
+                        <div className="bg-white/20 p-4 rounded-lg backdrop-blur-sm">Exportación de informes en PDF y CSV</div>
                     </div>
-                ) : null}
-            </Modal>
+                </header>
 
-            <footer className="text-center text-slate-500 text-sm pt-8">
-                <p>Copyright &copy; 2025-2026, Desarrollado por David Calvo. Todos los derechos reservados.</p>
-            </footer>
-        </div>
+                <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <DashboardCard icon={<ChartBarIcon />} title="Total Entrenamientos" value={dashboardStats.totalTrainings} color="#0EA5E9" />
+                    <DashboardCard icon={<RunnerIcon />} title="Total de Series" value={dashboardStats.totalSeries} color="#10B981" />
+                    <DashboardCard icon={<MuscleIcon />} title="Entr. P. Aeróbica" value={dashboardStats.totalPotencia} color="#F59E0B" />
+                    <DashboardCard icon={<UsersIcon />} title="Usuarios Activos" value={dashboardStats.activeUsers} color="#8B5CF6" />
+                </section>
+
+                <main>
+                    <div className="border-b border-slate-200 flex flex-col sm:flex-row">
+                        <button onClick={() => setActiveTab('new')} className={`py-2 px-4 border-b-2 text-lg font-medium ${activeTab === 'new' ? 'tab-active' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}>Nuevo Entrenamiento</button>
+                        <button onClick={() => setActiveTab('results')} className={`py-2 px-4 border-b-2 text-lg font-medium ${activeTab === 'results' ? 'tab-active' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}>Resultados</button>
+                        <button onClick={() => setActiveTab('history')} className={`py-2 px-4 border-b-2 text-lg font-medium ${activeTab === 'history' ? 'tab-active' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}>Historial</button>
+                    </div>
+
+                    <div className="mt-6">
+                        {activeTab === 'new' && (
+                            <div className="bg-white p-6 rounded-lg shadow-md space-y-6 fade-in">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <label htmlFor="athleteName" className="block text-sm font-medium text-slate-700">Nombre del Atleta</label>
+                                        <input type="text" id="athleteName" value={athleteName} onChange={(e) => setAthleteName(e.target.value)} className="mt-1 block w-full rounded-md border-sky-500 shadow-sm" />
+                                    </div>
+                                    <div>
+                                        <label htmlFor="day" className="block text-sm font-medium text-slate-700">Día de Entrenamiento</label>
+                                        <select id="day" value={day} onChange={(e) => setDay(e.target.value as DayOfWeek)} className="mt-1 block w-full rounded-md border-sky-500 shadow-sm">
+                                            {(['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'] as DayOfWeek[]).map(d => <option key={d} value={d}>{d}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label htmlFor="type" className="block text-sm font-medium text-slate-700">Tipo de Entrenamiento</label>
+                                        <select id="type" value={type} onChange={(e) => setType(e.target.value as TrainingType)} className="mt-1 block w-full rounded-md border-sky-500 shadow-sm">
+                                            {(['Series', 'Fartlek', 'Potencia Aeróbica', 'Fartlek más Series', 'Potencia Aeróbica más Series'] as TrainingType[]).map(t => <option key={t} value={t}>{t}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                {showSeriesForm && renderSeriesForm()}
+                                {showFartlekForm && renderFartlekForm()}
+                                {showPotenciaForm && renderPotenciaForm()}
+
+                                <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t">
+                                    <button onClick={handleRegister} className="bg-sky-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-sky-700 text-lg flex-grow min-h-[44px]">Registrar Entrenamiento</button>
+                                    <button onClick={resetForm} className="bg-red-500 text-white font-bold py-3 px-6 rounded-lg hover:bg-red-600 min-h-[44px]">Reiniciar Formulario</button>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'results' && <ResultsDisplay training={latestTraining} onExportCsv={handleExportCsv} onDelete={handleDeleteTraining} />}
+                        
+                        {activeTab === 'history' && (
+                            <div className="bg-white p-6 rounded-lg shadow-md fade-in">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h2 className="text-xl font-bold">Historial de Entrenamientos</h2>
+                                    {history.length > 0 && <button onClick={handleClearHistory} className="bg-red-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-600">Limpiar Historial</button>}
+                                </div>
+                                {history.length === 0 ? <p>No hay entrenamientos en el historial.</p> :
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left">
+                                        <thead className="bg-slate-50">
+                                            <tr>
+                                                <th className="p-3">Fecha</th>
+                                                <th className="p-3">Atleta</th>
+                                                <th className="p-3">Tipo</th>
+                                                <th className="p-3">Duración</th>
+                                                <th className="p-3">Acciones</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {history.slice().reverse().map(t => (
+                                                <tr key={t.id} className="border-b hover:bg-slate-50">
+                                                    <td className="p-3">{formatDate(t.date)}</td>
+                                                    <td className="p-3">{t.athleteName}</td>
+                                                    <td className="p-3">{t.type}</td>
+                                                    <td className="p-3">{formatTime(calculateTotalDuration(t))}</td>
+                                                    <td className="p-3 flex gap-2">
+                                                        <button onClick={() => setModalTrainingId(t.id)} className="text-sky-600 hover:text-sky-800"><EyeIcon /></button>
+                                                        <button onClick={() => handleDeleteTraining(t.id)} className="text-red-500 hover:text-red-700"><TrashIcon /></button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                }
+                            </div>
+                        )}
+                    </div>
+                </main>
+
+                <Modal isOpen={!!modalTrainingId} onClose={() => setModalTrainingId(null)}>
+                    {modalTraining ? (
+                        <div>
+                            <ResultsDisplay training={modalTraining} onExportCsv={handleExportCsv} onDelete={handleDeleteTraining} />
+                        </div>
+                    ) : null}
+                </Modal>
+
+                <footer className="text-center text-slate-500 text-sm pt-8">
+                    <p>Copyright &copy; 2025-2026, Desarrollado por David Calvo. Todos los derechos reservados.</p>
+                </footer>
+            </div>
+        </>
     );
 };
 
