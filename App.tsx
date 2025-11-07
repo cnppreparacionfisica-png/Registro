@@ -45,7 +45,7 @@ const calculateTotalDuration = (training: Training): number => {
     }
 };
 
-const generateReportHtml = (training: Training, paceChartImg: string | null, timeChartImg: string | null): string => {
+const generateReportHtml = (training: Training): string => {
     const renderSeriesTable = (series: Serie[]) => {
         const rows = series.map((s, i) => {
             const pacePer100 = s.distance > 0 ? (s.time / s.distance) * 100 : 0;
@@ -105,14 +105,52 @@ const generateReportHtml = (training: Training, paceChartImg: string | null, tim
             tablesHtml = renderAerobicTable(psData.potenciaBlocks, 'Detalle Potencia Aeróbica') + renderSeriesTable(psData.series);
             break;
     }
-
-    let chartsHtml = '';
-    if (paceChartImg) {
-        chartsHtml += `<div class="chart-container"><h3>Gráfico de Ritmo por 100m</h3><img src="${paceChartImg}" alt="Gráfico de Ritmo"></div>`;
-    }
-    if (timeChartImg) {
-        chartsHtml += `<div class="chart-container"><h3>Gráfico de Evolución de Tiempo</h3><img src="${timeChartImg}" alt="Gráfico de Tiempo"></div>`;
-    }
+    
+    // Using more robust styles for consistent PDF generation across devices.
+    const printStyles = `
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 40px; 
+            color: #333; 
+            font-size: 12pt;
+        }
+        .header {
+            text-align: center;
+            border-bottom: 2px solid #ccc;
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+            page-break-inside: avoid;
+        }
+        h1 { font-size: 24pt; margin: 0; }
+        h2 { font-size: 18pt; margin: 10px 0; color: #555; font-weight: normal; }
+        h3 { 
+            font-size: 14pt; 
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
+            margin-top: 30px;
+            margin-bottom: 15px;
+        }
+        p { margin: 5px 0; }
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin-top: 1em; 
+            page-break-inside: auto;
+        }
+        tr {
+            page-break-inside: avoid;
+        }
+        th, td { 
+            border: 1px solid #ccc; 
+            padding: 8px; 
+            text-align: left; 
+            font-size: 10pt;
+        }
+        th { 
+            background-color: #f2f2f2; 
+            font-weight: bold; 
+        }
+    `;
 
     return `
         <!DOCTYPE html>
@@ -120,18 +158,7 @@ const generateReportHtml = (training: Training, paceChartImg: string | null, tim
         <head>
             <meta charset="UTF-8">
             <title>Informe de Entrenamiento - ${training.athleteName}</title>
-            <style>
-                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 2rem; color: #333; }
-                .header, .chart-container { page-break-inside: avoid; }
-                h1, h2, h3 { color: #111; }
-                h1 { font-size: 2em; } h2 { font-size: 1.5em; border-bottom: 2px solid #0EA5E9; padding-bottom: 0.3em; margin-top: 2em; }
-                table { width: 100%; border-collapse: collapse; margin-top: 1em; margin-bottom: 2em; page-break-inside: avoid; }
-                th, td { border: 1px solid #ddd; padding: 0.75rem; text-align: left; }
-                th { background-color: #f7fafc; font-weight: 600; }
-                tr:nth-child(even) { background-color: #fdfdff; }
-                .chart-container { margin-top: 2rem; }
-                .chart-container img { max-width: 100%; height: auto; border: 1px solid #eee; border-radius: 4px; }
-            </style>
+            <style>${printStyles}</style>
         </head>
         <body>
             <div class="header">
@@ -141,7 +168,6 @@ const generateReportHtml = (training: Training, paceChartImg: string | null, tim
                 <p><small>${formatDate(training.date)}</small></p>
             </div>
             ${tablesHtml}
-            ${chartsHtml}
         </body>
         </html>`;
 };
@@ -248,15 +274,7 @@ const ResultsDisplay = ({ training, onExportCsv, onDelete }: { training: Trainin
     const handlePrint = useCallback(() => {
         if (!training) return;
         
-        if (seriesData.length > 0 && (!chartInstances.current.pace || !chartInstances.current.time)) {
-            alert("Los gráficos aún no están listos. Por favor, espera un momento y vuelve a intentarlo.");
-            return;
-        }
-
-        const paceChartImg = chartInstances.current.pace ? chartInstances.current.pace.toBase64Image() : null;
-        const timeChartImg = chartInstances.current.time ? chartInstances.current.time.toBase64Image() : null;
-    
-        const reportHtml = generateReportHtml(training, paceChartImg, timeChartImg);
+        const reportHtml = generateReportHtml(training);
     
         const printWindow = window.open('', '_blank');
         if (printWindow) {
@@ -270,7 +288,7 @@ const ResultsDisplay = ({ training, onExportCsv, onDelete }: { training: Trainin
         } else {
             alert('Por favor, habilita las ventanas emergentes para poder imprimir el informe.');
         }
-    }, [training, seriesData]);
+    }, [training]);
 
     if (!training) {
         return <div className="text-center p-8 bg-white rounded-lg shadow-md">No hay datos de entrenamiento todavía. Registra uno nuevo para ver los resultados.</div>;
