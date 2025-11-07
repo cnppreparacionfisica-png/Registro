@@ -111,26 +111,29 @@ const generateReportHtml = (training: Training): string => {
         body { 
             font-family: Arial, sans-serif; 
             margin: 40px; 
-            color: #333; 
+            color: #000;
             font-size: 12pt;
+            -webkit-print-color-adjust: exact;
+            color-adjust: exact;
         }
         .header {
             text-align: center;
-            border-bottom: 2px solid #ccc;
+            border-bottom: 2px solid #aaa;
             padding-bottom: 10px;
             margin-bottom: 30px;
             page-break-inside: avoid;
         }
-        h1 { font-size: 24pt; margin: 0; }
-        h2 { font-size: 18pt; margin: 10px 0; color: #555; font-weight: normal; }
+        h1 { font-size: 24pt; margin: 0; color: #000; }
+        h2 { font-size: 18pt; margin: 10px 0; color: #000; font-weight: normal; }
         h3 { 
             font-size: 14pt; 
-            border-bottom: 1px solid #eee;
+            border-bottom: 1px solid #ccc;
             padding-bottom: 5px;
             margin-top: 30px;
             margin-bottom: 15px;
+            color: #000;
         }
-        p { margin: 5px 0; }
+        p { margin: 5px 0; color: #000; }
         table { 
             width: 100%; 
             border-collapse: collapse; 
@@ -141,13 +144,14 @@ const generateReportHtml = (training: Training): string => {
             page-break-inside: avoid;
         }
         th, td { 
-            border: 1px solid #ccc; 
+            border: 1px solid #999; 
             padding: 8px; 
             text-align: left; 
             font-size: 10pt;
+            color: #000;
         }
         th { 
-            background-color: #f2f2f2; 
+            background-color: #e8e8e8; 
             font-weight: bold; 
         }
     `;
