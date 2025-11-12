@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import type { Training, TrainingType, Serie, FartlekBlock, PotenciaBlock, DayOfWeek, FartlekSeriesData, PotenciaSeriesData } from './types';
 import { Chart, registerables } from 'chart.js';
@@ -45,7 +46,7 @@ const calculateTotalDuration = (training: Training): number => {
     }
 };
 
-const generateReportHtml = (training: Training): string => {
+const generateReportHtml = (training: Training, paceChartImage?: string, timeChartImage?: string): string => {
     const renderSeriesTable = (series: Serie[]) => {
         const rows = series.map((s, i) => {
             const pacePer100 = s.distance > 0 ? (s.time / s.distance) * 100 : 0;
@@ -105,6 +106,34 @@ const generateReportHtml = (training: Training): string => {
             tablesHtml = renderAerobicTable(psData.potenciaBlocks, 'Detalle Potencia Aeróbica') + renderSeriesTable(psData.series);
             break;
     }
+
+    let chartsHtml = '';
+    const hasSeriesData = training.type.includes('Series') && (
+        (training.type === 'Series' && (training.data as Serie[]).length > 0) ||
+        (training.type === 'Fartlek más Series' && (training.data as FartlekSeriesData).series.length > 0) ||
+        (training.type === 'Potencia Aeróbica más Series' && (training.data as PotenciaSeriesData).series.length > 0)
+    );
+
+    if (hasSeriesData && (paceChartImage || timeChartImage)) {
+        chartsHtml = `
+            <div class="charts-section">
+                <h3>Gráficos de Rendimiento</h3>`;
+        if (paceChartImage) {
+            chartsHtml += `
+                <div class="chart">
+                    <h4>Gráfico de Ritmo por 100m</h4>
+                    <img src="${paceChartImage}" alt="Gráfico de Ritmo por 100m" />
+                </div>`;
+        }
+        if (timeChartImage) {
+            chartsHtml += `
+                <div class="chart">
+                    <h4>Gráfico de Evolución de Tiempo</h4>
+                    <img src="${timeChartImage}" alt="Gráfico de Evolución de Tiempo" />
+                </div>`;
+        }
+        chartsHtml += `</div>`;
+    }
     
     // Using more robust styles for consistent PDF generation across devices.
     const printStyles = `
@@ -133,6 +162,13 @@ const generateReportHtml = (training: Training): string => {
             margin-bottom: 15px;
             color: #000;
         }
+        h4 {
+            font-size: 12pt;
+            text-align: center;
+            margin-bottom: 10px;
+            color: #000;
+            font-weight: bold;
+        }
         p { margin: 5px 0; color: #000; }
         table { 
             width: 100%; 
@@ -154,6 +190,21 @@ const generateReportHtml = (training: Training): string => {
             background-color: #e8e8e8; 
             font-weight: bold; 
         }
+        .charts-section {
+            page-break-before: auto;
+            page-break-inside: avoid;
+            margin-top: 30px;
+        }
+        .chart {
+            width: 100%;
+            text-align: center;
+            margin-bottom: 25px;
+        }
+        .chart img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+        }
     `;
 
     return `
@@ -172,6 +223,7 @@ const generateReportHtml = (training: Training): string => {
                 <p><small>${formatDate(training.date)}</small></p>
             </div>
             ${tablesHtml}
+            ${chartsHtml}
         </body>
         </html>`;
 };
@@ -277,18 +329,22 @@ const ResultsDisplay = ({ training, onExportCsv, onDelete }: { training: Trainin
     
     const handlePrint = useCallback(() => {
         if (!training) return;
+    
+        const paceChartImage = chartInstances.current.pace?.toBase64Image();
+        const timeChartImage = chartInstances.current.time?.toBase64Image();
         
-        const reportHtml = generateReportHtml(training);
+        const reportHtml = generateReportHtml(training, paceChartImage, timeChartImage);
     
         const printWindow = window.open('', '_blank');
         if (printWindow) {
             printWindow.document.open();
             printWindow.document.write(reportHtml);
             printWindow.document.close();
-            setTimeout(() => {
+            // The onload event is more reliable than setTimeout for printing
+            printWindow.onload = () => {
                 printWindow.focus();
                 printWindow.print();
-            }, 500);
+            };
         } else {
             alert('Por favor, habilita las ventanas emergentes para poder imprimir el informe.');
         }
